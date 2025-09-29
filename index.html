@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Data Search Application</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 2000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+
+        .upload-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            border: 2px dashed #ddd;
+        }
+
+        .search-section {
+            margin-bottom: 20px;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+
+        .search-info {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .results-section {
+            overflow-x: auto;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        th, td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            white-space: nowrap;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-style: italic;
+        }
+
+        .file-input {
+            margin: 10px 0;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .btn {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .btn:hover {
+            background-color: #0056b3;
+        }
+
+        .btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .result-count {
+            margin: 10px 0;
+            color: #666;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .error {
+            color: #dc3545;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+
+        .success {
+            color: #28a745;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+
+        .loading {
+            display: none;
+            color: #007bff;
+            margin-top: 5px;
+        }
+
+        .filters {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .filter-select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-width: 150px;
+        }
+
+        .file-type-info {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        /* New styles for full description */
+        .description-cell {
+            white-space: normal !important;
+            word-wrap: break-word;
+            max-width: 400px;
+            min-width: 200px;
+        }
+
+        .date-cell {
+            white-space: nowrap;
+            min-width: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Order History Search Application</h1>
+        
+        <div class="upload-section">
+            <h3>Upload Your Data File</h3>
+            <input type="file" id="dataFile" accept=".csv,.xlsx,.xls" class="file-input">
+            <div class="file-type-info">Supported formats: CSV, Excel (.xlsx, .xls)</div>
+            <button id="loadBtn" onclick="loadFile()" class="btn">Load Data</button>
+            <div class="loading" id="loadingIndicator">Loading data...</div>
+            <div id="fileInfo"></div>
+        </div>
+
+        <div class="search-section">
+            <h3>Order History</h3>
+            <div class="search-info">
+                Search by: Customer Name, Item Description, Item Number, PO#, SO#, or JO Number
+            </div>
+            <input type="text" id="searchInput" class="search-box" placeholder="Enter search term..." onkeyup="searchData()" disabled>
+            
+            <div class="filters">
+                <select id="customerFilter" class="filter-select" onchange="applyFilters()" disabled>
+                    <option value="">All Customers</option>
+                </select>
+                <select id="salesRepFilter" class="filter-select" onchange="applyFilters()" disabled>
+                    <option value="">All Sales Reps</option>
+                </select>
+            </div>
+            
+            <div class="result-count" id="resultCount">No data loaded</div>
+        </div>
+
+        <div class="results-section">
+            <table id="resultsTable">
+                <thead>
+                    <tr>
+                        <th>Item #</th>
+                        <th>SO #</th>
+                        <th>JO #</th>
+                        <th>PO #</th>
+                        <th>Date Ordered</th>
+                        <th>Customer Name</th>
+                        <th>Sales Representative</th>
+                        <th>Quantity</th>
+                        <th>Items Description</th>
+                        <th>Unit Price</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                    <tr>
+                        <td colspan="10" class="no-results">Please upload a data file to begin searching</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let csvData = [];
+        let currentData = [];
+        let headers = [];
+
+        function loadFile() {
+            const fileInput = document.getElementById('dataFile');
+            const fileInfo = document.getElementById('fileInfo');
+            const resultCount = document.getElementById('resultCount');
+            const loadBtn = document.getElementById('loadBtn');
+            const searchInput = document.getElementById('searchInput');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const exportBtn = document.getElementById('exportBtn');
+            
+            if (!fileInput.files.length) {
+                fileInfo.innerHTML = '<div class="error">Please select a file first.</div>';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+
+            loadBtn.disabled = true;
+            loadingIndicator.style.display = 'block';
+            fileInfo.innerHTML = '';
+
+            if (fileExtension === 'csv') {
+                processCSVFile(file);
+            } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+                processExcelFile(file);
+            } else {
+                fileInfo.innerHTML = '<div class="error">Unsupported file format. Please use CSV or Excel files.</div>';
+                loadBtn.disabled = false;
+                loadingIndicator.style.display = 'none';
+            }
+
+            function processCSVFile(file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const csvText = e.target.result;
+                        const parsedData = parseCSV(csvText);
+                        if (parsedData.data.length === 0) {
+                            throw new Error('No valid data found in CSV file');
+                        }
+                        processData(parsedData);
+                    } catch (error) {
+                        fileInfo.innerHTML = `<div class="error">Error loading file: ${error.message}</div>`;
+                        loadBtn.disabled = false;
+                        loadingIndicator.style.display = 'none';
+                    }
+                };
+                reader.onerror = function() {
+                    fileInfo.innerHTML = '<div class="error">Error reading file</div>';
+                    loadBtn.disabled = false;
+                    loadingIndicator.style.display = 'none';
+                };
+                reader.readAsText(file);
+            }
+
+            function processExcelFile(file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array', cellText: false, cellDates: true });
+                        const worksheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[worksheetName];
+                        
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+                            header: 1, 
+                            raw: false,
+                            defval: '',
+                            dateNF: 'mm/dd/yyyy' // Changed to Month/Day/Year
+                        });
+                        
+                        console.log('Raw Excel data:', jsonData);
+
+                        if (jsonData.length < 2) {
+                            throw new Error('Excel file appears to be empty or invalid');
+                        }
+
+                        let headerRowIndex = 0;
+                        for (let i = 0; i < Math.min(20, jsonData.length); i++) {
+                            const row = jsonData[i];
+                            if (row && Array.isArray(row)) {
+                                const rowText = row.join(' ').toLowerCase();
+                                if (rowText.includes('so number') && 
+                                    (rowText.includes('customer') || rowText.includes('sales rep'))) {
+                                    headerRowIndex = i;
+                                    break;
+                                }
+                            }
+                        }
+
+                        headers = jsonData[headerRowIndex].map(header => 
+                            header ? String(header).trim() : ''
+                        );
+
+                        console.log('Headers found:', headers);
+
+                        const dataRows = [];
+                        for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
+                            const row = jsonData[i];
+                            if (!row || row.length === 0 || row.every(cell => cell === '' || cell === null || cell === undefined)) {
+                                continue;
+                            }
+
+                            const rowObj = {};
+                            headers.forEach((header, index) => {
+                                let value = row[index];
+                                if (value === undefined || value === null || value === '') {
+                                    value = '';
+                                } else {
+                                    // Handle date formatting
+                                    if (header.toLowerCase().includes('date')) {
+                                        value = formatExcelDate(value);
+                                    } else {
+                                        value = String(value).trim();
+                                    }
+                                }
+                                rowObj[header] = value;
+                            });
+
+                            if (rowObj['SO Number'] && rowObj['SO Number'].trim() !== '') {
+                                dataRows.push(rowObj);
+                            }
+                        }
+
+                        if (dataRows.length === 0) {
+                            throw new Error('No valid data found in Excel file');
+                        }
+
+                        console.log('Raw data rows:', dataRows);
+
+                        const mappedData = dataRows.map((row, index) => {
+                            let itemNumber = '';
+                            
+                            for (const key in row) {
+                                if (key.toLowerCase().includes('item number') && key.toLowerCase().includes('new')) {
+                                    itemNumber = row[key] || '';
+                                    break;
+                                }
+                            }
+                            
+                            if (!itemNumber) {
+                                for (const key in row) {
+                                    if (key.toLowerCase().includes('item number') && key.toLowerCase().includes('old')) {
+                                        itemNumber = row[key] || '';
+                                        break;
+                                    }
+                                }
+                            }
+
+                            let quantity = '';
+                            for (const key in row) {
+                                if (key.toLowerCase().includes('quantity')) {
+                                    quantity = row[key] || '';
+                                    break;
+                                }
+                            }
+
+                            let itemDescription = '';
+                            for (const key in row) {
+                                if (key.toLowerCase().includes('description') || key.toLowerCase().includes('item desc')) {
+                                    itemDescription = row[key] || '';
+                                    break;
+                                }
+                            }
+
+                            let unitPrice = '';
+                            for (const key in row) {
+                                if (key.toLowerCase().includes('unit price') || key.toLowerCase().includes('price')) {
+                                    unitPrice = row[key] || '';
+                                    break;
+                                }
+                            }
+
+                            let dateOrdered = '';
+                            for (const key in row) {
+                                if (key.toLowerCase().includes('date') || key.toLowerCase().includes('ordered')) {
+                                    dateOrdered = formatExcelDate(row[key]) || '';
+                                    break;
+                                }
+                            }
+
+                            let joNumber = '';
+                            for (const key in row) {
+                                if (key.toLowerCase().includes('jo#') || key.toLowerCase().includes('jo number') || key.toLowerCase().includes('jo no')) {
+                                    joNumber = row[key] || '';
+                                    break;
+                                }
+                            }
+
+                            console.log(`Row ${index}:`, {
+                                itemNumber,
+                                soNumber: row['SO Number'],
+                                joNumber,
+                                poNumber: row['PO Number'],
+                                dateOrdered,
+                                customer: row['Customer Name'],
+                                salesRep: row['Sales Rep'],
+                                quantity,
+                                description: itemDescription,
+                                unitPrice
+                            });
+
+                            return {
+                                'Item Number': itemNumber,
+                                'SO Number': row['SO Number'] || '',
+                                'JO Number': joNumber,
+                                'PO Number': row['PO Number'] || '',
+                                'Date Ordered': dateOrdered || row['Date Ordered'] || '',
+                                'Customer Name': row['Customer Name'] || '',
+                                'Sales Rep': row['Sales Rep'] || row['Sales Representative'] || '',
+                                'Quantity': quantity,
+                                'Item Description': itemDescription,
+                                'Unit Price': unitPrice
+                            };
+                        });
+
+                        console.log('Mapped data:', mappedData);
+                        processData({ headers: Object.keys(mappedData[0] || {}), data: mappedData });
+
+                    } catch (error) {
+                        fileInfo.innerHTML = `<div class="error">Error loading Excel file: ${error.message}</div>`;
+                        console.error('Error:', error);
+                        loadBtn.disabled = false;
+                        loadingIndicator.style.display = 'none';
+                    }
+                };
+
+                reader.onerror = function() {
+                    fileInfo.innerHTML = '<div class="error">Error reading file</div>';
+                    loadBtn.disabled = false;
+                    loadingIndicator.style.display = 'none';
+                };
+
+                reader.readAsArrayBuffer(file);
+            }
+
+            function processData(parsedData) {
+                csvData = parsedData.data;
+                headers = parsedData.headers;
+                currentData = csvData;
+                
+                console.log('Final processed data:', csvData);
+                
+                fileInfo.innerHTML = `<div class="success">✓ Successfully loaded ${csvData.length} records</div>`;
+                resultCount.textContent = `Showing all ${csvData.length} records`;
+                
+                searchInput.disabled = false;
+                document.getElementById('customerFilter').disabled = false;
+                document.getElementById('salesRepFilter').disabled = false;
+                
+                
+                populateFilters();
+                displayData(csvData);
+                
+                loadBtn.disabled = false;
+                loadingIndicator.style.display = 'none';
+            }
+        }
+
+        function formatExcelDate(value) {
+            if (!value) return '';
+            
+            // If it's already a proper date string in mm/dd/yyyy format
+            if (typeof value === 'string' && value.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+                return value;
+            }
+            
+            // If it's an Excel serial date number
+            if (typeof value === 'number') {
+                const excelEpoch = new Date(1899, 11, 30);
+                const date = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
+                return formatDateToMMDDYYYY(date);
+            }
+            
+            // If it's a Date object
+            if (value instanceof Date) {
+                return formatDateToMMDDYYYY(value);
+            }
+            
+            // Try to parse as date
+            const date = new Date(value);
+            if (!isNaN(date.getTime())) {
+                return formatDateToMMDDYYYY(date);
+            }
+            
+            return String(value);
+        }
+
+        function formatDateToMMDDYYYY(date) {
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${month}/${day}/${year}`;
+        }
+
+        function parseCSV(csvText) {
+            const lines = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(line => line.trim() !== '');
+            
+            if (lines.length < 2) {
+                throw new Error('CSV file appears to be empty or invalid');
+            }
+
+            headers = parseCSVLine(lines[0]);
+            const data = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVLine(lines[i]);
+                
+                if (values.length < 3 || values.every(v => v === '')) {
+                    continue;
+                }
+                
+                const row = {};
+                headers.forEach((header, index) => {
+                    let value = values[index] || '';
+                    // Format dates in CSV
+                    if (header.toLowerCase().includes('date')) {
+                        value = formatCSVDate(value);
+                    }
+                    row[header] = value;
+                });
+                
+                if (row['SO Number'] && row['SO Number'].trim() !== '') {
+                    data.push(row);
+                }
+            }
+            
+            return { headers, data };
+        }
+
+        function formatCSVDate(value) {
+            if (!value) return '';
+            
+            // Try to parse various date formats
+            const date = new Date(value);
+            if (!isNaN(date.getTime())) {
+                return formatDateToMMDDYYYY(date);
+            }
+            
+            return value;
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            let quoteChar = '"';
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                
+                if (char === quoteChar) {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            
+            result.push(current.trim());
+            return result;
+        }
+
+        function populateFilters() {
+            const customerFilter = document.getElementById('customerFilter');
+            const salesRepFilter = document.getElementById('salesRepFilter');
+            
+            const customers = [...new Set(csvData.map(row => row['Customer Name']).filter(Boolean))].sort();
+            const salesReps = [...new Set(csvData.map(row => row['Sales Rep']).filter(Boolean))].sort();
+            
+            customerFilter.innerHTML = '<option value="">All Customers</option>';
+            customers.forEach(customer => {
+                customerFilter.innerHTML += `<option value="${customer}">${customer}</option>`;
+            });
+            
+            salesRepFilter.innerHTML = '<option value="">All Sales Reps</option>';
+            salesReps.forEach(rep => {
+                salesRepFilter.innerHTML += `<option value="${rep}">${rep}</option>`;
+            });
+        }
+
+        function searchData() {
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+            const customerFilter = document.getElementById('customerFilter').value;
+            const salesRepFilter = document.getElementById('salesRepFilter').value;
+            const resultCount = document.getElementById('resultCount');
+            
+            if (!csvData.length) {
+                resultCount.textContent = 'No data loaded';
+                return;
+            }
+
+            let filteredData = csvData;
+
+            if (searchTerm !== '') {
+                filteredData = filteredData.filter(row => {
+                    return (
+                        (row['Customer Name'] || '').toLowerCase().includes(searchTerm) ||
+                        (row['Item Description'] || '').toLowerCase().includes(searchTerm) ||
+                        (row['Item Number'] || '').toLowerCase().includes(searchTerm) ||
+                        (row['SO Number'] || '').toLowerCase().includes(searchTerm) ||
+                        (row['JO Number'] || '').toLowerCase().includes(searchTerm) ||
+                        (row['PO Number'] || '').toLowerCase().includes(searchTerm) ||
+                        (row['Sales Rep'] || '').toLowerCase().includes(searchTerm)
+                    );
+                });
+            }
+
+            if (customerFilter !== '') {
+                filteredData = filteredData.filter(row => row['Customer Name'] === customerFilter);
+            }
+
+            if (salesRepFilter !== '') {
+                filteredData = filteredData.filter(row => row['Sales Rep'] === salesRepFilter);
+            }
+
+            currentData = filteredData;
+            resultCount.textContent = `Found ${currentData.length} matching records`;
+            displayData(currentData);
+        }
+
+        function displayData(data) {
+            const tbody = document.getElementById('resultsBody');
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="no-results">No matching records found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(row => {
+                return `
+                    <tr>
+                        <td>${escapeHtml(row['Item Number'] || '')}</td>
+                        <td>${escapeHtml(row['SO Number'] || '')}</td>
+                        <td>${escapeHtml(row['JO Number'] || '')}</td>
+                        <td>${escapeHtml(row['PO Number'] || '')}</td>
+                        <td class="date-cell">${escapeHtml(row['Date Ordered'] || '')}</td>
+                        <td>${escapeHtml(row['Customer Name'] || '')}</td>
+                        <td>${escapeHtml(row['Sales Rep'] || '')}</td>
+                        <td>${escapeHtml(formatNumber(row['Quantity']))}</td>
+                        <td class="description-cell">${escapeHtml(row['Item Description'] || '')}</td>
+                        <td>${escapeHtml(formatNumber(row['Unit Price']))}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function formatNumber(value) {
+            if (!value || value.toString().trim() === '') return '';
+            const numStr = value.toString().replace(/[^\d.-]/g, '');
+            const num = parseFloat(numStr);
+            return isNaN(num) ? value : num.toLocaleString('en-US');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function exportToCSV() {
+            if (currentData.length === 0) {
+                alert('No data to export');
+                return;
+            }
+
+            const headers = ['Item #', 'SO #', 'JO #', 'PO #', 'Date Ordered', 'Customer Name', 'Sales Representative', 'Quantity', 'Items Description', 'Unit Price'];
+            let csvContent = headers.join(',') + '\n';
+
+            currentData.forEach(row => {
+                const rowData = [
+                    row['Item Number'] || '',
+                    row['SO Number'] || '',
+                    row['JO Number'] || '',
+                    row['PO Number'] || '',
+                    row['Date Ordered'] || '',
+                    row['Customer Name'] || '',
+                    row['Sales Rep'] || '',
+                    formatNumber(row['Quantity']),
+                    row['Item Description'] || '',
+                    formatNumber(row['Unit Price'])
+                ].map(value => {
+                    value = String(value).replace(/"/g, '""');
+                    if (value.includes(',')) {
+                        value = `"${value}"`;
+                    }
+                    return value;
+                });
+
+                csvContent += rowData.join(',') + '\n';
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'sales_data.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
